@@ -43,7 +43,7 @@ jobs:
           docker pull "$image"
           docker image inspect --format '{{.Id}}' "$image" > /tmp/howler-mcp-image-id.txt
           docker save "$image" | gzip -9 > /tmp/howler-mcp-image.tar.gz
-          sha256sum /tmp/howler-mcp-image.tar.gz > /tmp/howler-mcp-image.tar.gz.sha256
+          (cd /tmp && sha256sum howler-mcp-image.tar.gz > howler-mcp-image.tar.gz.sha256)
 
       - name: Retain an offline deployment artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
