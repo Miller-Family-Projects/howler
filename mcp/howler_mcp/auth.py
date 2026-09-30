@@ -1,10 +1,14 @@
+import base64
 import logging
+import stat
+from pathlib import Path
 from typing import Any
 
 import jwt
 from jwt import PyJWKClient
-
 from mcp.server.auth.provider import AccessToken, TokenVerifier
+
+from .config import HOWLER_API
 
 logger = logging.getLogger(__name__)
 
@@ -98,13 +102,45 @@ class KeycloakTokenVerifier(TokenVerifier):
 
 
 class AuthProvider:
-    """
-    Responsible for managing backend API access tokens.
-    Using Token Pass-through since the MCP client token already contains
-    the necessary 'howler' audience and roles.
-    """
+    """Build the authorization header used for Howler backend requests."""
+
+    def __init__(
+        self,
+        mode: str = HOWLER_API.AUTH_MODE,
+        username: str | None = HOWLER_API.USERNAME,
+        api_key: str | None = None,
+        api_key_file: str | None = HOWLER_API.API_KEY_FILE,
+    ) -> None:
+        self.mode = mode.strip().lower()
+        if self.mode not in {"passthrough", "apikey"}:
+            raise ValueError(f"Unsupported Howler backend auth mode: {mode}")
+        if api_key and api_key_file:
+            raise ValueError("Howler backend API key has multiple sources")
+        if api_key_file:
+            path = Path(api_key_file)
+            info = path.lstat()
+            if not stat.S_ISREG(info.st_mode):
+                raise ValueError("Howler backend API key must be a regular file")
+            if stat.S_IMODE(info.st_mode) & 0o077:
+                raise ValueError(
+                    "Howler backend API key file permissions are too broad"
+                )
+            api_key = path.read_text().strip()
+        if self.mode == "apikey" and (not username or not api_key):
+            raise ValueError(
+                "Howler backend auth mode 'apikey' requires username and API key"
+            )
+        self.username = username
+        self.api_key = api_key
+
+    async def get_howler_authorization(self, user_token: str) -> str:
+        if self.mode == "passthrough":
+            return f"Bearer {user_token}"
+
+        credential = f"{self.username}:{self.api_key}".encode()
+        encoded = base64.b64encode(credential).decode("ascii")
+        return f"Basic {encoded}"
 
     async def get_howler_token(self, user_token: str) -> str:
-        # Token Pass-through: The token verified by KeycloakTokenVerifier
-        # is already fully qualified for the downstream backend API.
+        """Backward-compatible pass-through helper."""
         return user_token

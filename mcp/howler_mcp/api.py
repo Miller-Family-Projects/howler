@@ -2,7 +2,6 @@ import logging
 from typing import Any, Literal
 
 import httpx
-
 from mcp.server.auth.provider import AccessToken
 
 from .auth import AuthProvider
@@ -43,10 +42,10 @@ class HowlerApiClient:
         if method != "POST" and body is not None:
             raise ValueError("Request body is only allowed for POST")
 
-        exchanged_token = await self.auth_provider.get_howler_token(
+        authorization = await self.auth_provider.get_howler_authorization(
             user_access_token.token
         )
-        headers = {"Authorization": f"Bearer {exchanged_token}"}
+        headers = {"Authorization": authorization}
         url = f"{self.base_url}/{path.lstrip('/')}"
 
         response = await self._client.request(
