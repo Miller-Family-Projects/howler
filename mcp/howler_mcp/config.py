@@ -11,6 +11,9 @@ class HOWLER_API:
     AUDIENCE = os.environ.get("HOWLER_API_AUDIENCE", "howler")
     SCOPE = os.environ.get("HOWLER_API_SCOPE", "howler")
     TIMEOUT = float(os.environ.get("HOWLER_API_TIMEOUT", "5.0"))
+    AUTH_MODE = os.environ.get("HOWLER_API_AUTH_MODE", "passthrough")
+    USERNAME = os.environ.get("HOWLER_API_USERNAME")
+    API_KEY_FILE = os.environ.get("HOWLER_API_KEY_FILE")
 
 
 class AUTH:

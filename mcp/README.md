@@ -213,6 +213,7 @@ Required for real deployments:
 | Variable | Purpose | Example |
 |---|---|---|
 | `HOWLER_API_BASE_URL` | Base URL for Howler API | `http://howler-api:3000/api/v1` |
+| `HOWLER_API_AUTH_MODE` | Backend authorization mode: `passthrough` or `apikey` | `apikey` |
 | `AUTH_ISSUER` | JWT issuer expected by verifier | `https://keycloak.example/realms/howler-realm` |
 | `AUTH_JWKS_URI` | JWKS URI for JWT signature verification | `https://keycloak.example/realms/howler-realm/protocol/openid-connect/certs` |
 | `MCP_BASE_URL` | Public MCP base URL advertised by server auth metadata | `https://mcp.example/mcp` |
@@ -226,6 +227,8 @@ Strongly recommended:
 | `AUTH_CLIENT_ID` | Keycloak client id for MCP | `howlermcp` |
 | `AUTH_CLIENT_SECRET` | Required environment variable. Inject from a secret manager (no default). | `${AUTH_CLIENT_SECRET}` |
 | `HOWLER_API_TIMEOUT` | Request timeout seconds | `5.0` |
+| `HOWLER_API_USERNAME` | Howler service identity used in `apikey` mode | `mara-readonly` |
+| `HOWLER_API_KEY_FILE` | Private regular file containing the Howler API key | `/run/secrets/howler_api_key` |
 | `MCP_HOST` | Bind address in container/pod | `0.0.0.0` |
 | `MCP_PORT` | Listen port | `8000` |
 
@@ -236,6 +239,9 @@ Security expectations:
 - Do not commit credentials in files.
 - Provide secrets from a secret manager, Kubernetes Secret, or CI secret variables.
 - Keep audience and scope aligned between Keycloak, MCP server config, and client token requests.
+- Prefer `apikey` mode when MCP scope and Howler privileges must be independent. The
+  API-key file must be a regular file with no group or world permissions; symlinks and
+  broad permissions are rejected at startup.
 
 ### 3) Required Keycloak permissions and claims
 
@@ -269,7 +275,13 @@ Expected token claim shape:
       "groups": ["howler_user"]
     }
 
-Important: Current server behavior is token pass-through, not token exchange. The incoming user token is forwarded to the backend after verification.
+Backend authorization supports two modes:
+
+- `passthrough` (default) forwards the verified caller token to Howler.
+- `apikey` authenticates the caller at the MCP boundary, then uses a dedicated Howler
+  API key for backend requests. Configure the API key ACL in Howler (`R`, `W`, etc.)
+  and give each MCP deployment its own Howler identity. The caller token is not sent
+  to Howler in this mode.
 
 ### 4) Local run (developer validation)
 
@@ -321,6 +333,15 @@ From `howler/mcp`:
     docker build -t howler-mcp-server:latest .
     AUTH_CLIENT_SECRET="<secret-from-vault>" docker compose up -d
 
+For backend API-key mode, mount a private file and point the server to it:
+
+    docker run --rm \
+      -e HOWLER_API_AUTH_MODE=apikey \
+      -e HOWLER_API_USERNAME=mara-readonly \
+      -e HOWLER_API_KEY_FILE=/run/secrets/howler_api_key \
+      --mount type=bind,src=/private/howler_api_key,dst=/run/secrets/howler_api_key,readonly \
+      howler-mcp-server:latest
+
 Notes:
 - `docker-compose.yml` uses host networking in this repository.
 - For production, prefer explicit container networking and ingress policy controls.
@@ -332,7 +353,9 @@ Deploy MCP as a standard Deployment + Service, then expose through ingress/gatew
 Minimum requirements:
 
 1. Secret management
-- Store `AUTH_CLIENT_SECRET` (and any sensitive values) in Kubernetes Secrets.
+- Store `AUTH_CLIENT_SECRET` and the Howler backend API key in Kubernetes Secrets.
+- Mount the backend API key as a private file and set `HOWLER_API_KEY_FILE`; do not put
+  it directly in an environment variable.
 - Inject secrets via `env`/`envFrom`.
 
 2. Network policy

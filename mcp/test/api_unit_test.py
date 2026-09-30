@@ -1,9 +1,9 @@
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from howler_mcp.api import HowlerApiClient
-
 from mcp.server.auth.provider import AccessToken
+
+from howler_mcp.api import HowlerApiClient
 
 FAKE_TOKEN = AccessToken(token="fake-bearer", client_id="test-client", scopes=[])
 
@@ -17,7 +17,9 @@ async def test_call_reuses_and_closes_owned_http_client():
         json=Mock(return_value={"api_response": {"status": "ok"}})
     )
     auth_provider = Mock()
-    auth_provider.get_howler_token = AsyncMock(return_value="howler-token")
+    auth_provider.get_howler_authorization = AsyncMock(
+        return_value="Bearer howler-token"
+    )
 
     with patch(
         "howler_mcp.api.httpx.AsyncClient", return_value=http_client
@@ -31,4 +33,8 @@ async def test_call_reuses_and_closes_owned_http_client():
     assert second_response == {"status": "ok"}
     client_class.assert_called_once_with(timeout=2.0)
     assert http_client.request.await_count == 2
+    for request_call in http_client.request.await_args_list:
+        assert request_call.kwargs["headers"] == {
+            "Authorization": "Bearer howler-token"
+        }
     http_client.aclose.assert_awaited_once()
