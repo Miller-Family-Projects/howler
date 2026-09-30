@@ -37,10 +37,22 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Keep the house MCP image publicly pullable
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >-
-          gh api --method PATCH
-          /orgs/Miller-Family-Projects/packages/container/howler-mcp
-          -f visibility=public
+      - name: Export the exact published image
+        run: |
+          image="ghcr.io/miller-family-projects/howler-mcp:${GITHUB_SHA}"
+          docker pull "$image"
+          docker image inspect --format '{{.Id}}' "$image" > /tmp/howler-mcp-image-id.txt
+          docker save "$image" | gzip -9 > /tmp/howler-mcp-image.tar.gz
+          sha256sum /tmp/howler-mcp-image.tar.gz > /tmp/howler-mcp-image.tar.gz.sha256
+
+      - name: Retain an offline deployment artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: howler-mcp-${{ github.sha }}
+          path: |
+            /tmp/howler-mcp-image.tar.gz
+            /tmp/howler-mcp-image.tar.gz.sha256
+            /tmp/howler-mcp-image-id.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
