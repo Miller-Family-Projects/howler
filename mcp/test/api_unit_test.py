@@ -38,3 +38,31 @@ async def test_call_reuses_and_closes_owned_http_client():
             "Authorization": "Bearer howler-token"
         }
     http_client.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_call_reopens_owned_http_client_after_lifespan_close():
+    first_client = Mock(is_closed=False)
+    first_client.aclose = AsyncMock()
+    second_client = Mock(is_closed=False)
+    second_client.request = AsyncMock(
+        return_value=Mock(
+            raise_for_status=Mock(),
+            json=Mock(return_value={"api_response": {"status": "reopened"}}),
+        )
+    )
+    auth_provider = Mock()
+    auth_provider.get_howler_authorization = AsyncMock(return_value="Basic bounded-key")
+
+    with patch(
+        "howler_mcp.api.httpx.AsyncClient",
+        side_effect=[first_client, second_client],
+    ) as client_class:
+        api_client = HowlerApiClient(auth_provider=auth_provider, timeout=2.0)
+        await api_client.aclose()
+        first_client.is_closed = True
+        response = await api_client.call(FAKE_TOKEN, "/whoami", "GET")
+
+    assert response == {"status": "reopened"}
+    assert client_class.call_count == 2
+    second_client.request.assert_awaited_once()

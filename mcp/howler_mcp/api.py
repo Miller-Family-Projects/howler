@@ -48,6 +48,9 @@ class HowlerApiClient:
         headers = {"Authorization": authorization}
         url = f"{self.base_url}/{path.lstrip('/')}"
 
+        if self._owns_client and self._client.is_closed is True:
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+
         response = await self._client.request(
             method=method,
             url=url,
