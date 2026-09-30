@@ -7,12 +7,11 @@ file contains opt-in integration tests for live-server validation.
 """
 
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
 
 import pytest
-from howler_mcp.tools import MAXIMUM_LOOK_BACK, MAXIMUM_TICKET, RegisterTools
-
 from mcp.server.auth.provider import AccessToken
+
+from howler_mcp.tools import MAXIMUM_LOOK_BACK, MAXIMUM_TICKET, RegisterTools
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -117,25 +116,6 @@ async def test_search_hits_with_indicators_validation(tools_and_api, kwargs):
     tools, _ = tools_and_api
     with pytest.raises(ValueError):
         await tools["SearchHitsWithIndicators"](**kwargs)
-
-
-# ── Validation: UUID on GetHitById and AddCommentToHit ───────────────────────
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "tool_name,kwargs",
-    [
-        ("GetHitById", {"hit_id": "not-a-uuid"}),
-        ("GetHitById", {"hit_id": "12345"}),
-        ("AddCommentToHit", {"hit_id": "not-a-uuid", "comment": "hi"}),
-        ("AddCommentToHit", {"hit_id": "", "comment": "hi"}),
-    ],
-)
-async def test_uuid_validation(tools_and_api, tool_name, kwargs):
-    tools, _ = tools_and_api
-    with pytest.raises(ValueError, match="UUID"):
-        await tools[tool_name](**kwargs)
 
 
 # ── Happy path: WhoAmI ────────────────────────────────────────────────────────
@@ -267,7 +247,7 @@ async def test_get_false_positive_hits_shapes_response(tools_and_api):
 async def test_add_comment_sends_correct_payload(tools_and_api):
     tools, mock_api = tools_and_api
     mock_api.call.return_value = {}
-    hit_id = str(uuid4())
+    hit_id = "GWa4yh10Xc6yosoLmN4U0"
     with patch(GET_ACCESS_TOKEN_PATH, return_value=FAKE_TOKEN):
         result = await tools["AddCommentToHit"](hit_id=hit_id, comment="test note")
 
@@ -284,13 +264,29 @@ async def test_add_comment_sends_correct_payload(tools_and_api):
 @pytest.mark.asyncio
 async def test_get_hit_by_id_calls_correct_path(tools_and_api):
     tools, mock_api = tools_and_api
-    hit_id = str(uuid4())
+    hit_id = "GWa4yh10Xc6yosoLmN4U0"
     mock_api.call.return_value = {"howler": {"id": hit_id}}
     with patch(GET_ACCESS_TOKEN_PATH, return_value=FAKE_TOKEN):
         result = await tools["GetHitById"](hit_id=hit_id)
 
     assert mock_api.call.call_args.kwargs["path"] == f"/hit/{hit_id}"
     assert result["howler"]["id"] == hit_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", ["GetHitById", "AddCommentToHit"])
+@pytest.mark.parametrize("hit_id", ["", "../other", "contains space", "a/b"])
+async def test_hit_tools_reject_unsafe_ids(tools_and_api, tool_name, hit_id):
+    tools, _ = tools_and_api
+    kwargs = {"hit_id": hit_id}
+    if tool_name == "AddCommentToHit":
+        kwargs["comment"] = "note"
+
+    with (
+        patch(GET_ACCESS_TOKEN_PATH, return_value=FAKE_TOKEN),
+        pytest.raises(ValueError, match="valid Howler hit ID"),
+    ):
+        await tools[tool_name](**kwargs)
 
 
 @pytest.mark.asyncio
@@ -317,12 +313,14 @@ async def test_tool_call_error_is_propagated(tools_and_api, tool_name, kwargs):
     """Tools should surface api_client.call failures instead of swallowing them."""
     tools, mock_api = tools_and_api
     mock_api.call.side_effect = ValueError("Missing 'api_response' in response JSON")
-    valid_hit_id = str(uuid4())
+    valid_hit_id = "GWa4yh10Xc6yosoLmN4U0"
     effective_kwargs = {
         key: (valid_hit_id if value == "__VALID_HIT_ID__" else value)
         for key, value in kwargs.items()
     }
 
-    with patch(GET_ACCESS_TOKEN_PATH, return_value=FAKE_TOKEN):
-        with pytest.raises(ValueError, match="Missing 'api_response'"):
-            await tools[tool_name](**effective_kwargs)
+    with (
+        patch(GET_ACCESS_TOKEN_PATH, return_value=FAKE_TOKEN),
+        pytest.raises(ValueError, match="Missing 'api_response'"),
+    ):
+        await tools[tool_name](**effective_kwargs)

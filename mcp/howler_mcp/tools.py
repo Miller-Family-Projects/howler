@@ -1,15 +1,20 @@
 import logging
 import re
-import uuid
 from typing import Any
 
 from fastmcp.server.dependencies import get_access_token
-from pydantic import BaseModel, Field
-
 from mcp.server.auth.provider import AccessToken
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 LUCENE_SPECIAL_CHARS = frozenset(' +-!(){}[]^"~:\\/&|?*')
+HOWLER_HIT_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def _validate_hit_id(hit_id: str) -> None:
+    """Reject empty or path-unsafe values while accepting native Howler IDs."""
+    if not HOWLER_HIT_ID.fullmatch(hit_id):
+        raise ValueError("hit_id must be a valid Howler hit ID.")
 
 
 class WhoAmIResponse(BaseModel):
@@ -69,10 +74,7 @@ def RegisterTools(mcp, api_client):
     @mcp.tool(name="GetHitById")
     async def get_hit_by_id(hit_id: str) -> dict[str, Any]:
         """Return the hit information for the given ID."""
-        try:
-            uuid.UUID(hit_id)
-        except ValueError:
-            raise ValueError("hit_id must be a valid UUID.")
+        _validate_hit_id(hit_id)
         access_token: AccessToken | None = get_access_token()
         if not access_token:
             raise ValueError("Access token is not available.")
@@ -314,10 +316,7 @@ def RegisterTools(mcp, api_client):
     @mcp.tool(name="AddCommentToHit")
     async def add_comment_to_hit(hit_id: str, comment: str) -> str:
         """Add a comment to a specific hit."""
-        try:
-            uuid.UUID(hit_id)
-        except ValueError:
-            raise ValueError("hit_id must be a valid UUID.")
+        _validate_hit_id(hit_id)
         access_token: AccessToken | None = get_access_token()
         if not access_token:
             raise ValueError("Access token is not available.")
