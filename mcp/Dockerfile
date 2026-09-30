@@ -1,9 +1,13 @@
 # syntax=docker/dockerfile:1.7
 
-# Fully open fallback from standard Docker Hub
-FROM cgr.dev/ssc-spc.gc.ca/python:3.12-dev AS base
+# Public, immutable Python base. The upstream SSC image requires registry
+# credentials and cannot be used for reproducible external builds.
+FROM python:3.12-alpine@sha256:4c47124a8391cb7a9f571164147d154777cf012a4ece5f86097130d7a4478111 AS base
 
 USER root
+
+RUN addgroup -S -g 65532 nonroot && \
+    adduser -S -D -H -u 65532 -G nonroot nonroot
 
 # Must pass the branch and commit as parameter
 ARG branch
