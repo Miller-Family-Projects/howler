@@ -1,0 +1,58 @@
+name: House MCP image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact branch commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish the MCP image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: ./mcp
+          file: ./mcp/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/miller-family-projects/howler-mcp:${{ github.sha }}
+          build-args: |
+            branch=${{ github.ref_name }}
+            commit=${{ github.sha }}
+            version=0.1.1-house.1
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Export the exact published image
+        run: |
+          image="ghcr.io/miller-family-projects/howler-mcp:${GITHUB_SHA}"
+          docker pull "$image"
+          docker image inspect --format '{{.Id}}' "$image" > /tmp/howler-mcp-image-id.txt
+          docker save "$image" | gzip -9 > /tmp/howler-mcp-image.tar.gz
+          (cd /tmp && sha256sum howler-mcp-image.tar.gz > howler-mcp-image.tar.gz.sha256)
+
+      - name: Retain an offline deployment artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: howler-mcp-${{ github.sha }}
+          path: |
+            /tmp/howler-mcp-image.tar.gz
+            /tmp/howler-mcp-image.tar.gz.sha256
+            /tmp/howler-mcp-image-id.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
